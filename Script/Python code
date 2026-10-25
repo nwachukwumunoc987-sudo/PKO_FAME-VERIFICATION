@@ -1,0 +1,222 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+
+df = pd.read_csv("FAME_profile_verification - lipid_parameters.csv")
+
+df.columns = ["notation", "name", "external", "codex_min", "codex_max"]
+
+
+# 1. CLEAN LABORATORY RESULTS
+# To keep numerical values as reported in csv file.
+
+def clean_external(x):
+    s = str(x).strip().upper()
+
+    if s in ["NR"]:
+        return np.nan, "NOT REPORTED"
+
+    if s in ["ND"]:
+        return np.nan, "NOT DETECTED - There is need for further review"
+
+    if s in ["-"]:
+        return np.nan, "DASH - MEANING UNCONFIRMED"
+
+    if s in ["", "NAN", "NONE"]:
+        return np.nan, "BLANK OR MISSING"
+
+    try:
+        return float(s), "NUMERIC RESULT"
+    except ValueError:
+        return np.nan, f"UNRECOGNIZED VALUE: {s}"
+
+
+# 2. CLEAN CODEX REFERENCE VALUES
+# Do not assume that ND means zero.
+# Interpret ND, C and other markers using the applicable Codex footnotes.
+
+def clean_codex(x):
+    s = str(x).strip().upper()
+
+    if s in ["ND"]:
+        return np.nan
+
+    if s == "C":
+        return np.nan
+
+    if s in ["NR", "-"]:
+        return np.nan
+
+    try:
+        return float(s)
+    except ValueError:
+        return np.nan
+
+
+# Apply cleaning while retaining the original laboratory data
+external_cleaned = df["external"].apply(clean_external)
+
+df["ext"] = external_cleaned.apply(lambda x: x[0])
+df["external_status"] = external_cleaned.apply(lambda x: x[1])
+
+df["cmin"] = df["codex_min"].apply(clean_codex)
+df["cmax"] = df["codex_max"].apply(clean_codex)
+
+
+# 3. CLASSIFY EACH FATTY ACID
+# Classifications is base on the numerical laboratory result
+# and valid numerical Codex minimum and maximum values.
+
+def check(row):
+    result = row["ext"]
+    minimum = row["cmin"]
+    maximum = row["cmax"]
+    status = row["external_status"]
+
+    # The laboratory result is not a numerical value
+    if pd.isna(result):
+        return status
+
+    # The reference limits are incomplete or require interpretation
+    if pd.isna(minimum) or pd.isna(maximum):
+        return "REFERENCE LIMIT NEEDS REVIEW"
+
+    # Check whether the reference limits are logically valid
+    if minimum > maximum:
+        return "INVALID REFERENCE LIMITS - REVIEW"
+
+    # Compare the laboratory result with the Codex limits
+    if result < minimum:
+        return "Detected Value is below range"
+
+    elif result > maximum:
+        return "Detected Value is above range"
+
+    else:
+        return "Value is in range"
+
+
+df["RESULT"] = df.apply(check, axis=1)
+
+
+# 4. PRINT THE RESULTS
+print("\n--- FATTY ACID PROFILE VERIFICATION ---")
+
+print(
+    df[
+        [
+            "notation",
+            "name",
+            "external",
+            "ext",
+            "codex_min",
+            "codex_max",
+            "RESULT"
+        ]
+    ].to_string(index=False)
+)
+
+
+# 5. CHECK THE SUM OF REPORTED NUMERICAL VALUES
+#tHIS IS TO DETERMINE DEVIATION FROM 100 PERCENT
+
+total = df["ext"].sum(min_count=1)
+
+print("\n--- PROFILE TOTAL ---")
+
+if pd.notna(total):
+    print(f"Sum of reported numerical fatty acid values: {total:.2f}%")
+    print(f"Difference from 100%: {100 - total:.2f} percentage points")
+    print(
+        "Note: The difference is unaccounted for; "
+        "its cause has not been established."
+    )
+else:
+    print("No numerical laboratory results are available.")
+
+
+# 6. SAVE THE CLASSIFIED DATA
+df.to_csv("FAME_cleaned_final.csv", index=False)
+
+print("\nSaved: FAME_cleaned_final.csv")
+
+
+# 7. PLOT ALL LABORATORY RESULTS AGAINST CODEX RANGES
+# Shows every acid where lab gave a value (not NR)
+
+key = df[df["ext"].notna()].copy()
+
+if key.empty:
+    print("\nNo laboratory fatty acids were found for plotting.")
+else:
+    fig, ax = plt.subplots(figsize=(11, 6))
+    x_positions = np.arange(len(key))
+
+    codex_label_used = False
+    lab_label_used = False
+
+    for i, (_, row) in enumerate(key.iterrows()):
+        # Codex min-max interval
+        minimum = row["cmin"]
+        maximum = row["cmax"]
+
+        if pd.notna(minimum) and pd.notna(maximum) and minimum <= maximum:
+            midpoint = (minimum + maximum) / 2
+            lower_error = midpoint - minimum
+            upper_error = maximum - midpoint
+
+            ax.errorbar(
+                i,
+                midpoint,
+                yerr=np.array([[lower_error], [upper_error]]),
+                fmt="s",
+                capsize=5,
+                color='green',
+                label="Codex minimum–maximum range" if not codex_label_used else None
+            )
+            codex_label_used = True
+
+        # Lab result - plot as is
+        result = row["ext"]
+        if pd.notna(result):
+            ax.scatter(
+                i,
+                result,
+                marker="o",
+                s=100,
+                color='red',
+                label="External laboratory result" if not lab_label_used else None
+            )
+            lab_label_used = True
+
+    ax.set_xticks(x_positions)
+    ax.set_xticklabels(key["notation"], rotation=45)
+    ax.set_xlabel("Fatty acid notation")
+    ax.set_ylabel("Fatty acid concentration (%)")
+    ax.set_title("External Laboratory Results vs Codex PKO Reference Ranges - ALL Lab Values")
+    ax.legend()
+    ax.grid(axis="y", linestyle="--", alpha=0.4)
+    plt.tight_layout()
+    plt.savefig("PKO_verification_chart_ALL.png", dpi=300, bbox_inches="tight")
+    plt.show()
+    print("\nSaved: PKO_verification_chart_ALL.png")
+    print(f"Plotted {len(key)} acids: {', '.join(key['notation'].tolist())}")
+
+
+# 8. PRINT A SUMMARY OF CLASSIFICATIONS
+print("\n--- CLASSIFICATION SUMMARY ---")
+
+print(df["RESULT"].value_counts(dropna=False).to_string())
+
+print(
+    "\nImportant: An out-of-range result identifies a discrepancy "
+    "with the reference interval. It does not, by itself, prove "
+    "that the sample is not palm kernel oil or that the laboratory "
+    "made an error."
+)
+
+print(
+    "\nReview Codex footnotes before interpreting ND or C markers. "
+    "Confirm the meaning of laboratory dashes with the original report "
+    "or the laboratory."
+)
