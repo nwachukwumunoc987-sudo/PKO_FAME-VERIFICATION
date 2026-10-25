@@ -1,2 +1,6 @@
-# PKO_FAME-VERIFICATION
-In full compliance to the standard specifications of the regulatory agencies of Nigeria, it is mandatory to carry out biannual quality control confirmatory tests on the finished products.  I observed an anomaly; the FAME profiling of our palm kernel vegetable did not relate with CODEX literature for palm kernel oil in most cases.
+Python-Based Investigation of Palm Kernel Oil Fatty-Acid Profiles in Relation to Codex Reference Ranges
+Background and Motivation: I have been working in the vegetable oil industry as a quality control analyst, and this has shown me how important reliable analytical results are for quality assurance.
+
+In conformity with the standards set by quality regulatory agencies in Nigeria, it is mandatory that every industry receives a report on the quality standards of its product from an independent, external laboratory. While reviewing the reports a certain external laboratory returned for our palm kernel vegetable oil, I noticed substantial differences between some reported fatty acid percentages and the reference ranges published in the Codex standard.
+
+This raised a question for me: how can I investigate these differences step by step without assuming the laboratory results were incorrect? I mapped out a plan for this, first apply the python skills I have been learning, make a report to the management, reach out to the laboratory before outsourcing other external laboratories. This project builds on the steps I have been taking toward connecting industrial chemistry, data analysis, and computational methods to investigate practical, real-life chemical problems.
